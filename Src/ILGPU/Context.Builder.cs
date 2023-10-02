@@ -1,6 +1,6 @@
 ﻿// ---------------------------------------------------------------------------------------
 //                                        ILGPU
-//                           Copyright (c) 2021 ILGPU Project
+//                        Copyright (c) 2021-2023 ILGPU Project
 //                                    www.ilgpu.net
 //
 // File: Context.Builder.cs
@@ -49,6 +49,9 @@ namespace ILGPU
                 // Register intrinsics
                 PTXIntrinsics.Register(IntrinsicManager);
                 CLIntrinsics.Register(IntrinsicManager);
+
+                // Setups an initial debug configuration
+                DebugConfig(enableAssertions: true);
             }
 
             #endregion
@@ -71,13 +74,10 @@ namespace ILGPU
             #region Methods
 
             /// <summary>
-            /// Enables all supported accelerators and puts the context into
-            /// auto-assertion mode via <see cref="AutoAssertions"/> and
-            /// auto-IO-operations mode via <see cref="AutoIOOperations"/>.
+            /// Enables all supported accelerators.
             /// </summary>
             /// <returns>The current builder instance.</returns>
-            public Builder Default() =>
-                AllAccelerators().AutoAssertions().AutoIOOperations();
+            public Builder Default() => AllAccelerators();
 
             /// <summary>
             /// Enables all supported accelerators.
@@ -117,6 +117,7 @@ namespace ILGPU
             /// </summary>
             /// <param name="debugSymbolsMode">The symbols mode to use.</param>
             /// <returns>The current builder instance.</returns>
+            [Obsolete("Use DebugConfig() instead to configure debugging")]
             public Builder DebugSymbols(DebugSymbolsMode debugSymbolsMode) =>
                 debugSymbolsMode < DebugSymbolsMode
                 ? throw new InvalidOperationException(
@@ -132,6 +133,7 @@ namespace ILGPU
             /// to at least <see cref="DebugSymbolsMode.Basic"/>.
             /// </remarks>
             /// <returns>The current builder instance.</returns>
+            [Obsolete("Use DebugConfig() instead to configure debugging")]
             public Builder Assertions()
             {
                 EnableAssertions = true;
@@ -147,6 +149,7 @@ namespace ILGPU
             /// to at least <see cref="DebugSymbolsMode.Basic"/>.
             /// </remarks>
             /// <returns>The current builder instance.</returns>
+            [Obsolete("Use DebugConfig() instead to configure debugging")]
             public Builder IOOperations()
             {
                 EnableIOOperations = true;
@@ -157,6 +160,7 @@ namespace ILGPU
             /// Turns on the internal IR verifier.
             /// </summary>
             /// <returns>The current builder instance.</returns>
+            [Obsolete("Use DebugConfig() instead to configure debugging")]
             public Builder Verify()
             {
                 EnableVerifier = true;
@@ -211,14 +215,61 @@ namespace ILGPU
             /// Automatically enables all assertions as soon as a debugger is attached.
             /// </summary>
             /// <returns>The current builder instance.</returns>
+            [Obsolete("Use DebugConfig() instead to configure debugging")]
             public Builder AutoAssertions() => Debugger.IsAttached ? Assertions() : this;
 
             /// <summary>
             /// Automatically enables all IO operations as soon as a debugger is attached.
             /// </summary>
             /// <returns>The current builder instance.</returns>
+            [Obsolete("Use DebugConfig() instead to configure debugging")]
             public Builder AutoIOOperations() =>
                 Debugger.IsAttached ? IOOperations() : this;
+
+            /// <summary>
+            /// Configures debug mode while taking the given settings into account.
+            /// Note that debugging of <see cref="OptimizationLevel.O1"/> and
+            /// <see cref="OptimizationLevel.O2"/> can only be enabled by setting
+            /// <paramref name="forceDebuggingOfOptimizedKernels"/> to true.
+            /// </summary>
+            /// <param name="enableAssertions">True to enable debug assertions.</param>
+            /// <param name="enableIOOperations">True to enable IO operations.</param>
+            /// <param name="debugSymbolsMode">Configure use of debug symbols.</param>
+            /// <param name="forceDebuggingOfOptimizedKernels">
+            /// True to force the use of debug configuration in O1 and O2 builds.
+            /// </param>
+            /// <param name="enableIRVerifier">
+            /// True to turn on the internal IR verifier.
+            /// </param>
+            /// <returns>The current builder instance.</returns>
+            public Builder DebugConfig(
+                bool enableAssertions = false,
+                bool enableIOOperations = false,
+                DebugSymbolsMode debugSymbolsMode = DebugSymbolsMode.Auto,
+                bool forceDebuggingOfOptimizedKernels = false,
+                bool enableIRVerifier = false)
+            {
+                if (debugSymbolsMode < DebugSymbolsMode)
+                {
+                    throw new InvalidOperationException(
+                        RuntimeErrorMessages.InvalidDowngradeOfDebugSymbols);
+                }
+
+                EnableAssertions = enableAssertions;
+                DebugSymbolsMode = debugSymbolsMode;
+                EnableIOOperations = enableIOOperations;
+                ForceDebuggingOfOptimizedKernels = forceDebuggingOfOptimizedKernels;
+                EnableVerifier = enableIRVerifier;
+                return this;
+            }
+
+            /// <summary>
+            /// Sets the optimization level to <see cref="OptimizationLevel.Debug"/>,
+            /// calls <see cref="Assertions()"/> to turn on all debug assertion checks
+            /// and calls <see cref="IOOperations"/> to turn on all debug outputs.
+            /// </summary>
+            /// <returns>The current builder instance.</returns>
+            public Builder Debug() => Optimize(OptimizationLevel.Debug);
 
             /// <summary>
             /// Automatically switches to <see cref="Debug()"/> mode if a debugger is
@@ -228,23 +279,10 @@ namespace ILGPU
             public Builder AutoDebug() => Debugger.IsAttached ? Debug() : this;
 
             /// <summary>
-            /// Sets the optimization level to <see cref="OptimizationLevel.Debug"/>,
-            /// calls <see cref="Assertions()"/> to turn on all debug assertion checks
-            /// and calls <see cref="IOOperations"/> to turn on all debug outputs.
-            /// </summary>
-            /// <returns>The current builder instance.</returns>
-            public Builder Debug() =>
-                Optimize(OptimizationLevel.Debug).
-                Assertions().
-                IOOperations().
-                DebugSymbols(DebugSymbolsMode.Kernel);
-
-            /// <summary>
             /// Sets the optimization level to <see cref="OptimizationLevel.Release"/>.
             /// </summary>
             /// <returns>The current builder instance.</returns>
-            public Builder Release() =>
-                Optimize(OptimizationLevel.Release);
+            public Builder Release() => Optimize(OptimizationLevel.Release);
 
             /// <summary>
             /// Specifies the optimization level.
@@ -369,7 +407,7 @@ namespace ILGPU
         /// Creates a new builder instance.
         /// </summary>
         /// <returns>The builder instance.</returns>
-        public static Builder Create() => new Builder();
+        public static Builder Create() => new();
 
         /// <summary>
         /// Creates a new context instance.
@@ -399,17 +437,40 @@ namespace ILGPU
         /// instance.
         /// </summary>
         /// <returns>The created context.</returns>
+        [Obsolete("Use CreateDefaultAutoDebug instead")]
         public static Context CreateDefaultAutoAssertions() =>
-            Create(builder => builder.Default().AutoAssertions());
+            CreateDefaultAutoDebug(enableAssertions: true);
 
         /// <summary>
         /// Creates a default context by invoking the <see cref="Builder.Default()"/> and
         /// the <see cref="Builder.AutoDebug()"/> methods on the temporary builder
-        /// instance.
+        /// instance while offering the ability to configure an initial debug config.
         /// </summary>
+        /// <param name="enableAssertions">True to enable debug assertions.</param>
+        /// <param name="enableIOOperations">True to enable IO operations.</param>
+        /// <param name="debugSymbolsMode">Configure use of debug symbols.</param>
+        /// <param name="forceDebuggingOfOptimizedKernels">
+        /// True to force the use of debug configuration in O1 and O2 builds.
+        /// </param>
+        /// <param name="enableIRVerifier">
+        /// True to turn on the internal IR verifier.
+        /// </param>
         /// <returns>The created context.</returns>
-        public static Context CreateDefaultAutoDebug() =>
-            Create(builder => builder.Default().AutoDebug());
+        public static Context CreateDefaultAutoDebug(
+            bool enableAssertions = false,
+            bool enableIOOperations = false,
+            DebugSymbolsMode debugSymbolsMode = DebugSymbolsMode.Auto,
+            bool forceDebuggingOfOptimizedKernels = false,
+            bool enableIRVerifier = false) =>
+            Create(builder => builder
+                .Default()
+                .DebugConfig(
+                    enableAssertions,
+                    enableIOOperations,
+                    debugSymbolsMode,
+                    forceDebuggingOfOptimizedKernels,
+                    enableIRVerifier)
+                .AutoDebug());
 
         #endregion
     }
